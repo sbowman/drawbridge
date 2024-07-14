@@ -5,15 +5,16 @@ PG_SRC := \
 	postgres/db.go \
 	postgres/postgres.go \
 	postgres/span.go \
-	postgres/stdlib.go \
+	postgres/std/db.go \
+	postgres/std/tx.go \
 	postgres/tx.go \
 
 PG_TEST := \
-	postgres/stdlib_test.go
+	postgres/std/std_test.go
 
 .PHONY: test_postgres
 test_postgres: db_postgres $(PG_SRC) $(PG_TEST)
-	@cd postgres && go test
+	@cd postgres && go test ./...
 
 .PHONY: db_postgres
 db_postgres:

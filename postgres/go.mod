@@ -1,4 +1,4 @@
-module github.com/sbowman/drawbridge/pgx
+module github.com/sbowman/drawbridge/postgres
 
 go 1.22.5
 

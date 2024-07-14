@@ -80,3 +80,14 @@ type Span interface {
 	// row and discards the rest.
 	QueryRow(ctx context.Context, sql string, args ...any) *sql.Row
 }
+
+// TxClose is a shorthand function to use in a defer statement.  If the transaction fails
+// to close (commit or rollback), the function panics.
+func TxClose(ctx context.Context, tx Span) {
+	err := tx.Close(ctx)
+	if err == nil {
+		return
+	}
+
+	panic("Transaction failed to close: " + err.Error())
+}

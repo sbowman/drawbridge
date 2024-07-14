@@ -7,6 +7,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -19,6 +21,25 @@ const (
 // Open wraps the [pgxpool.Pool] so it supports the [Span] interface.
 func Open(pool *pgxpool.Pool) *DB {
 	return &DB{pool}
+}
+
+// SafeURI replaces the password in the PostgreSQL DB URI with asterisks, for secure
+// logging purposes.  If outputting a database URI to a log message, be sure to wrap it in
+// a SafeURI call.
+func SafeURI(pgURI string) string {
+	re := regexp.MustCompile("postgres://(?:[^:]+:([^@]*)@)?.*/")
+	sub := re.FindStringSubmatchIndex(pgURI)
+	if len(sub) < 4 || sub[2] == -1 {
+		return pgURI
+	}
+
+	var b strings.Builder
+
+	b.WriteString(pgURI[:sub[2]])
+	b.WriteString("****")
+	b.WriteString(pgURI[sub[3]:])
+
+	return b.String()
 }
 
 // UniqueViolation returns true if the error is a pgconn.PgError with a code of 23505,
