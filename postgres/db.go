@@ -1,28 +1,32 @@
-package pg
+package postgres
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // DB wraps the *pgxpool.Pool and provides the missing function wrappers to support
-// [db.Conn].
+// [Span].
 type DB struct {
 	*pgxpool.Pool
 }
 
-// Begin a new transaction.
-func (db *DB) Begin(ctx context.Context) (Conn, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+// Begin a new transaction with default isolation.
+func (db *DB) Begin(ctx context.Context) (Span, error) {
+	return db.BeginTx(ctx, pgx.TxOptions{})
+}
 
-	tx, err := db.Pool.Begin(ctx)
+// BeginTx starts a transaction with custom isolation and other transaction options.
+func (db *DB) BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error) {
+	_, err := db.Pool.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Tx{tx}, nil
+	// TODO: fix BeginTx
+	//return &Tx{tx}, nil
+	return nil, nil
 }
 
 // Commit does nothing on a connection, since you're not in a transaction.
