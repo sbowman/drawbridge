@@ -17,8 +17,9 @@ into a single package.
 * https://github.com/sbowman/migrations
 
 Note if you've used `sbowman/hermes-pgx`, you'll notice a number of features have been
-removed. Drawbridge simplifies its interfaces to simple be about querying and updating
-the database.
+removed. Drawbridge simplifies its interfaces to only be about querying and updating
+the database. Other functionality like locks and timers are left to the application or
+separate packages.
 
 ## Standard, Shared Interface
 
