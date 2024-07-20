@@ -107,7 +107,7 @@ database functionality. You can create a transaction in the test case and pass i
 function that takes a `postgres.Span`, run any tests on the results of that function, and
 simply let the transaction rollback at the end of the test to clean up.
 
-    var DB span.Span
+    var DB *postgres.DB
     
     // We'll just open one database connection pool to speed up testing, so 
     // we're not constantly opening and closing connections.
