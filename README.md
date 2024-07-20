@@ -1,4 +1,4 @@
-# Drawbridge Database Support Libraries
+# Drawbridge Database Support
 
 Drawbridge supplements `database/sql` and various database drivers such as `jackc/pgx`.  
 It provides two things:
