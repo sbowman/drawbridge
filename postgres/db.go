@@ -19,14 +19,12 @@ func (db *DB) Begin(ctx context.Context) (Span, error) {
 
 // BeginTx starts a transaction with custom isolation and other transaction options.
 func (db *DB) BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error) {
-	_, err := db.Pool.BeginTx(ctx, opts)
+	tx, err := db.Pool.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: fix BeginTx
-	//return &Tx{tx}, nil
-	return nil, nil
+	return &Tx{tx}, nil
 }
 
 // Commit does nothing on a connection, since you're not in a transaction.

@@ -1,26 +1,44 @@
+// Package postgres enables a standard interface based on the pgx/v5
 package postgres
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"reflect"
 	"regexp"
 	"strings"
 )
 
-const (
-	// PgUniqueViolation is the PostgreSQL error code indicating a unique constraint
-	// violation. In other words, the insert or update tried to store a duplicate
-	// value.
-	PgUniqueViolation = "23505"
-)
-
-// Open wraps the [pgxpool.Pool] so it supports the [Span] interface.
-func Open(pool *pgxpool.Pool) *DB {
+// FromPool creates a postgres.Span-compatible object.
+func FromPool(pool *pgxpool.Pool) *DB {
 	return &DB{pool}
+}
+
+// Open wraps the [pgxpool.Pool] so it supports the [Span] interface.  See
+// [pgxpool.ParseConfig] for details on the format of the URI string.
+func Open(uri string) (*DB, error) {
+	config, err := pgxpool.ParseConfig(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		Register(conn.TypeMap())
+		return nil
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DB{pool}, nil
 }
 
 // SafeURI replaces the password in the PostgreSQL DB URI with asterisks, for secure
@@ -52,7 +70,7 @@ func UniqueViolation(err error) bool {
 
 	var pgerr *pgconn.PgError
 	if errors.As(err, &pgerr) {
-		return pgerr.Severity == "ERROR" && pgerr.Code == PgUniqueViolation
+		return pgerr.Severity == "ERROR" && pgerr.Code == CodeUniqueViolation
 	}
 
 	return false
@@ -73,4 +91,42 @@ func TxClose(ctx context.Context, tx Span) {
 	}
 
 	panic("Transaction failed to close: " + err.Error())
+}
+
+// Register registers the github.com/google/uuid integration with a pgtype.Map.
+func Register(m *pgtype.Map) {
+	m.TryWrapEncodePlanFuncs = append([]pgtype.TryWrapEncodePlanFunc{TryWrapUUIDEncodePlan}, m.TryWrapEncodePlanFuncs...)
+	m.TryWrapScanPlanFuncs = append([]pgtype.TryWrapScanPlanFunc{TryWrapUUIDScanPlan}, m.TryWrapScanPlanFuncs...)
+
+	m.RegisterType(&pgtype.Type{
+		Name:  "uuid",
+		OID:   pgtype.UUIDOID,
+		Codec: UUIDCodec{},
+	})
+
+	registerDefaultPgTypeVariants := func(name, arrayName string, value interface{}) {
+		// T
+		m.RegisterDefaultPgType(value, name)
+
+		// *T
+		valueType := reflect.TypeOf(value)
+		m.RegisterDefaultPgType(reflect.New(valueType).Interface(), name)
+
+		// []T
+		sliceType := reflect.SliceOf(valueType)
+		m.RegisterDefaultPgType(reflect.MakeSlice(sliceType, 0, 0).Interface(), arrayName)
+
+		// *[]T
+		m.RegisterDefaultPgType(reflect.New(sliceType).Interface(), arrayName)
+
+		// []*T
+		sliceOfPointerType := reflect.SliceOf(reflect.TypeOf(reflect.New(valueType).Interface()))
+		m.RegisterDefaultPgType(reflect.MakeSlice(sliceOfPointerType, 0, 0).Interface(), arrayName)
+
+		// *[]*T
+		m.RegisterDefaultPgType(reflect.New(sliceOfPointerType).Interface(), arrayName)
+	}
+
+	registerDefaultPgTypeVariants("uuid", "_uuid", uuid.UUID{})
+	registerDefaultPgTypeVariants("uuid", "_uuid", UUID{})
 }

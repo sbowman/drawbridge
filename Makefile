@@ -20,3 +20,5 @@ test_postgres: db_postgres $(PG_SRC) $(PG_TEST)
 db_postgres:
 	@psql -U drawbridge template1 -c "select 1;" > /dev/null 2>&1 || createuser -d drawbridge
 	@psql -U drawbridge drawbridge_test -c "select 1;" > /dev/null 2>&1 || createdb -U drawbridge drawbridge_test
+
+

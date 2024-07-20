@@ -6,49 +6,46 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Span abstracts the *pgx.Conn struct and the postgres.Tx interface into a common
-// interface.  This can be useful for building domain models more functionally, i.e the
-// same function could be used for a single database query outside of a transaction, or
-// included in a transaction with other function calls.
+// Span provides a more specific interface for PostgreSQL `jackc/pgx` users.  It abstracts
+// the [pgx.Conn] struct and the [pgx.Tx] interface into a common interface, similar to
+// [drawbridge.Span], but with pgx return values.
 //
-// It's also useful for testing, as you can pass a transaction into any database-related
-// function, don't commit, and simply Close() at the end of the test to clean up the
-// database.
+// See [drawbridge.Span] for details.
 type Span interface {
 	// Begin starts a transaction.  If Conn already represents a transaction, pgx will
 	// create a savepoint instead.
 	Begin(ctx context.Context) (Span, error)
 
+	// BeginTx allows for richer control over the transaction.  Note that if this is
+	// called in an existing transaction, the new `opts` are ignored and the options
+	// for the wrapping transaction are used.
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error)
 
-	// Commit the transaction.  Does nothing if Conn is a *pgxpool.Pool.  If the
-	// transaction is a psuedo-transaction, i.e. a savepoint, releases the savepoint.
-	// Otherwise commits the transaction.
+	// Commit the transaction.
 	Commit(ctx context.Context) error
 
 	// Close will do one of these things:
 	//
-	// * If the underlying instance is a simple database connection, returns the
-	//   connection to the pool.
+	// * If the underlying instance is a simple database connection, it does nothing.
 	// * If the underlying instance is a transaction that hasn't been committed, it
 	//   rolls back the transaction.
-	// * If the underlying instance is a transaction that has been committed, does
+	// * If the underlying instance is a transaction that has been committed, it does
 	//   nothing.
-	// * If the underlying instance is a checkpoint transaction that hasn't been
-	//   committed, rolls back to the checkpoint.
-	// * If the underlying instance is a checkpoint transaction that has been
-	//   committed, does nothing.
 	Close(ctx context.Context) error
 
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 
 	// Exec executes a query without returning any rows.  The args are for any
-	// placeholder parameters in the query.
+	// placeholder parameters in the query.  Note in [postgres.Span], returns a
+	// [pgconn.CommandTag] instead of [sql.Result].
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (commandTag pgconn.CommandTag, err error)
 
 	// Query executes a query that returns rows, typically a SELECT.  The args are for
-	// any placeholder parameters in the query.
+	// any placeholder parameters in the query.  Note in [postgres.Span], returns
+	// [pgx.Rows] instead of [sql.Rows].
+	//
+	// Make sure to either consume all the rows or call [pgx.Rows.Close].
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 
 	// QueryRow executes a query that is expected to return at most one row. QueryRow

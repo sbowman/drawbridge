@@ -11,16 +11,12 @@ type Tx struct {
 }
 
 // Begin starts a pseudo nested transaction.
-func (tx *Tx) Begin(ctx context.Context) (*Tx, error) {
+func (tx *Tx) Begin(ctx context.Context) (Span, error) {
 	return tx.BeginTx(ctx, pgx.TxOptions{})
 }
 
 // BeginTx starts a transaction with custom isolation and other transaction options.
-func (tx *Tx) BeginTx(ctx context.Context, _ pgx.TxOptions) (*Tx, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (tx *Tx) BeginTx(ctx context.Context, _ pgx.TxOptions) (Span, error) {
 	newTx, err := tx.Tx.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -38,9 +34,5 @@ func (tx *Tx) BeginTx(ctx context.Context, _ pgx.TxOptions) (*Tx, error) {
 //
 // Any other failure of a real transaction will result in the connection being closed.
 func (tx *Tx) Close(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	return tx.Tx.Rollback(ctx)
 }

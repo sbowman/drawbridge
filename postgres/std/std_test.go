@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	// TestDB is the test database URI.  Created by the Makefile.
 	TestDB = "postgres://drawbridge@localhost:5432/drawbridge_test?sslmode=disable"
 )
 
