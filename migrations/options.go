@@ -19,6 +19,7 @@ const (
 	EnvEmbeddedRollbacks = "DB_EMBED"
 )
 
+// Options manages the configuration of the migrations tool.
 type Options struct {
 	// Revision is the revision to forcibly move to.  Defaults to the latest revision
 	// as indicated by the available SQL files (which could be a rollback if the
@@ -38,6 +39,9 @@ type Options struct {
 		Schema string
 		Table  string
 	}
+
+	// Reader defaults to the DiskReader for querying and ingesting migration files.
+	Reader Reader
 }
 
 // DefaultOptions returns the defaults for the migrations package.  They include:
@@ -77,6 +81,7 @@ func DefaultOptions() Options {
 		Revision:          revision,
 		Directory:         directory,
 		EmbeddedRollbacks: embed,
+		Reader:            &DiskReader{},
 	}
 
 	return options.WithSchemaTable(schemaTable)

@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"sort"
@@ -38,11 +39,11 @@ func MissingMigrationsRollbacks(tx *sql.Tx) bool {
 }
 
 // UpdateRollback adds the migration's "down" SQL to the rollbacks table.
-func UpdateRollback(tx *sql.Tx, path string) error {
+func (m Migration) UpdateRollback(ctx context.Context, path string) error {
 	var err error
 	filename := Filename(path)
 
-	row := tx.QueryRow("select exists(select 1 from migrations.rollbacks where migration = $1)", filename)
+	row := m.span.QueryRow(ctx, "select exists(select 1 from "+m.metadataTable+" where migration = $1)", filename)
 	var exists bool
 	if err := row.Scan(&exists); err != nil {
 		return err
@@ -52,28 +53,21 @@ func UpdateRollback(tx *sql.Tx, path string) error {
 		return nil
 	}
 
-	downSQL, mods, err := ReadSQL(path, Down)
+	downSQL, mods, err := ReadSQL(m.reader, path, Down)
 	if err != nil {
 		return err
 	}
 
-	downSQL = SQL(strings.TrimSpace(string(downSQL)))
+	downSQL = strings.TrimSpace(downSQL)
 
-	// Record that the rollback should stop here, as indicated by the annotation on the Down
-	// indicator in the SQL
-	if mods.Has("/stop") {
-		_, err = tx.Exec("insert into migrations.rollbacks (migration, down) values ($1, '/stop')", filename)
-		return err
-	}
-
-	_, err = tx.Exec("insert into migrations.rollbacks (migration, down) values ($1, $2)", filename, downSQL)
+	_, err = m.span.Exec(ctx, "update "+m.metadataTable+" set rollback = $1 where migration = $2", downSQL, filename)
 	return err
 }
 
-// ApplyRollbacks collects any migrations stored in the database that are higher than the desired
-// revision and runs the "down" migration to roll them back.
-func ApplyRollbacks(db *sql.DB, revision int) error {
-	migrations, err := Applied(db)
+// ApplyRollbacks collects any migrations stored in the database that are higher than the
+// desired revision and runs the "down" migration to roll them back.
+func ApplyRollbacks(ctx context.Context, span Span, revision int) error {
+	migrations, err := Applied(ctx, span)
 	if err != nil {
 		return err
 	}
@@ -82,7 +76,7 @@ func ApplyRollbacks(db *sql.DB, revision int) error {
 	sort.Sort(SortDown(migrations))
 
 	for _, migration := range migrations {
-		tx, err := db.Begin()
+		tx, err := span.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -142,13 +136,13 @@ func ApplyRollbacks(db *sql.DB, revision int) error {
 
 // HandleEmbeddedRollbacks updates the rollbacks and then applies any missing and necessary
 // rollbacks to get the database to the implied versions.
-func HandleEmbeddedRollbacks(db *sql.DB, directory string, version int) error {
+func HandleEmbeddedRollbacks(ctx context.Context, span Span, reader Reader, directory string, version int) error {
 	if version == Latest {
-		version = LatestRevision(directory)
+		version = LatestRevision(reader, directory)
 	}
 
 	// Apply the db-based rollbacks as needed
-	if err := ApplyRollbacks(db, version); err != nil {
+	if err := ApplyRollbacks(ctx, span, version); err != nil {
 		return err
 	}
 

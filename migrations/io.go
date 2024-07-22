@@ -16,11 +16,10 @@ type Reader interface {
 }
 
 // DiskReader outputs to disk, the Migrations default.
-type DiskReader struct {
-}
+type DiskReader struct{}
 
 // Files reads the filenames from disk.
-func (d *DiskReader) Files(directory string) ([]string, error) {
+func (disk *DiskReader) Files(directory string) ([]string, error) {
 	files, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, err
@@ -35,6 +34,6 @@ func (d *DiskReader) Files(directory string) ([]string, error) {
 }
 
 // Read the SQL migration from disk.
-func (d *DiskReader) Read(path string) (io.Reader, error) {
+func (disk *DiskReader) Read(path string) (io.Reader, error) {
 	return os.Open(path)
 }
