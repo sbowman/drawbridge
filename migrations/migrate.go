@@ -33,12 +33,19 @@ const (
 )
 
 var (
+	// ErrInvalidSpan returned if the [drawbridge.Span] used to create a transaction
+	// isn't compatible with [migrations.Span].
+	ErrInvalidSpan = errors.New("does not implement migrations.Span interface")
+
 	// ErrNameRequired returned if the user failed to supply a name for the
 	// migration.
 	ErrNameRequired = errors.New("name required")
 
 	// ErrInvalidStep returned when stepping back in a rollback.
 	ErrInvalidStep = errors.New("invalid step")
+
+	// ErrUpDownBlocksNotFound returned if the SQL migration file doesn't look valid.
+	ErrUpDownBlocksNotFound = errors.New("no up or down blocks found in migration")
 
 	// Matches the Up/Down sections in the SQL migration file
 	dirRe = regexp.MustCompile(`^---\s+!(Up|Down).*$`)
@@ -64,6 +71,22 @@ type Span interface {
 	// require an unlock, whereas other databases unlock the table at the end of the
 	// transaction, so this may do nothing.
 	UnlockMetadata(ctx context.Context, metadataTable string)
+}
+
+// Begin is a helper function to create a transaction compatible with a [migration.Span]
+// from a [drawbridge.Span]
+func Begin(ctx context.Context, span drawbridge.Span) (Span, error) {
+	tx, err := span.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	stx, ok := tx.(Span)
+	if !ok {
+		return nil, ErrInvalidSpan
+	}
+
+	return stx, nil
 }
 
 // Create a new migration from the template.
@@ -132,7 +155,9 @@ func (options Options) Apply(ctx context.Context, span Span) error {
 		return nil
 	}
 
-	return HandleEmbeddedRollbacks(ctx, span, reader, options.Directory, options.Revision)
+	// If the application was downgraded, we may need to rollback the migrations to
+	// the correct revision for this version of the application...
+	return m.HandleEmbeddedRollbacks(ctx, options.Directory)
 }
 
 // Migration defines the details about the migration being attempted.
@@ -151,18 +176,18 @@ type Migration struct {
 // Each migration file, when applied, is done so in a transaction with the metadata table
 // locked, to prevent duplicate migrations across processes.
 func (m Migration) ReadAndApply(ctx context.Context, path string) error {
-	tx, err := m.span.Begin(ctx)
+	tx, err := Begin(ctx, m.span)
 	if err != nil {
 		return err
 	}
 	defer drawbridge.TxClose(ctx, tx)
 
-	if err := m.span.LockMetadata(ctx, m.metadataTable); err != nil {
+	if err := tx.LockMetadata(ctx, m.metadataTable); err != nil {
 		return err
 	}
-	defer m.span.UnlockMetadata(ctx, m.metadataTable)
+	defer tx.UnlockMetadata(ctx, m.metadataTable)
 
-	if m.ShouldRun(ctx, path) {
+	if ShouldRun(ctx, tx, m.metadataTable, path, m.direction, m.revision) {
 		SQL, err := ReadSQL(m.reader, path, m.direction)
 		if err != nil {
 			return err
@@ -173,12 +198,12 @@ func (m Migration) ReadAndApply(ctx context.Context, path string) error {
 			return err
 		}
 
-		if err = m.Migrated(ctx, path); err != nil {
+		if err = Migrated(ctx, tx, m.reader, m.metadataTable, path, m.direction, m.rollbacks); err != nil {
 			return err
 		}
 	}
 
-	return tx.Commit(ctx)
+	return tx.Commit()
 }
 
 // Rollback a number of migrations.
@@ -308,17 +333,17 @@ func Moving(ctx context.Context, span Span, metadataTable string, version int) D
 
 // ShouldRun decides if the migration should be applied or removed, based on
 // the direction and desired version to reach.
-func (m Migration) ShouldRun(ctx context.Context, migration string) bool {
+func ShouldRun(ctx context.Context, span Span, metadataTable, migration string, direction Direction, revision int) bool {
 	version, err := Revision(migration)
 	if err != nil {
 		return false
 	}
 
-	switch m.direction {
+	switch direction {
 	case Up:
-		return IsUp(version, m.revision) && !IsMigrated(ctx, m.span, m.metadataTable, migration)
+		return IsUp(version, revision) && !IsMigrated(ctx, span, metadataTable, migration)
 	case Down:
-		return IsDown(version, m.revision) && IsMigrated(ctx, m.span, m.metadataTable, migration)
+		return IsDown(version, revision) && IsMigrated(ctx, span, metadataTable, migration)
 	}
 	return false
 }
@@ -343,11 +368,12 @@ func ReadSQL(reader Reader, path string, direction Direction) (string, error) {
 
 	sqldoc := new(bytes.Buffer)
 	parsing := false
+	valid := false
 
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		found := dirRe.FindStringSubmatch(s.Text())
-		if len(found) == 1 {
+		if len(found) > 1 {
 			dir := strings.ToLower(found[1])
 
 			if Direction(dir) == direction {
@@ -357,9 +383,14 @@ func ReadSQL(reader Reader, path string, direction Direction) (string, error) {
 
 			parsing = false
 		} else if parsing {
+			valid = true
 			sqldoc.Write(s.Bytes())
 			sqldoc.WriteRune('\n')
 		}
+	}
+
+	if !valid {
+		return "", ErrUpDownBlocksNotFound
 	}
 
 	return sqldoc.String(), nil
@@ -395,30 +426,6 @@ func LatestMigration(ctx context.Context, span Span, metadataTable string) (stri
 	return latest, nil
 }
 
-// Applied returns the list of migrations that have already been applied to this database.
-func (m Migration) Applied(ctx context.Context) ([]string, error) {
-	rows, err := m.span.Query(ctx, "select migration from "+m.metadataTable)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	var migration string
-	var results []string
-
-	for rows.Next() {
-		if err := rows.Scan(&migration); err != nil {
-			return nil, err
-		}
-
-		results = append(results, migration)
-	}
-
-	return results, nil
-}
-
 // IsMigrated checks the migration has been applied to the database, i.e. is it
 // in the migrations.applied table?
 func IsMigrated(ctx context.Context, span Span, metadataTable string, migration string) bool {
@@ -428,20 +435,20 @@ func IsMigrated(ctx context.Context, span Span, metadataTable string, migration 
 }
 
 // Migrated adds or removes the migration record from the metadata table.
-func (m Migration) Migrated(ctx context.Context, path string) error {
+func Migrated(ctx context.Context, span Span, reader Reader, metadataTable, path string, direction Direction, rollbacks bool) error {
 	filename := Filename(path)
 
-	if m.direction == Down {
-		if _, err := m.span.Exec(ctx, "delete from "+m.metadataTable+" where migration = $1", filename); err != nil {
+	if direction == Down {
+		if _, err := span.Exec(ctx, "delete from "+metadataTable+" where migration = $1", filename); err != nil {
 			return err
 		}
 	} else {
-		if _, err := m.span.Exec(ctx, "insert into "+m.metadataTable+" (migration) values ($1)", filename); err != nil {
+		if _, err := span.Exec(ctx, "insert into "+metadataTable+" (migration) values ($1)", filename); err != nil {
 			return err
 		}
 
-		if m.rollbacks {
-			if err := m.UpdateRollback(ctx, path); err != nil {
+		if rollbacks {
+			if err := UpdateRollback(ctx, span, reader, metadataTable, path); err != nil {
 				return err
 			}
 		}

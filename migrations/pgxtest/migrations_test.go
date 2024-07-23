@@ -7,6 +7,7 @@ import (
 	"github.com/sbowman/drawbridge/migrations"
 	"github.com/sbowman/drawbridge/postgres/std"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"os"
 	"strings"
 	"testing"
@@ -58,10 +59,9 @@ func TestUp(t *testing.T) {
 
 	defer clean(t, ctx)
 
-	reader := &migrations.DiskReader{}
+	options := migrations.WithDirectory("./testdata")
 
-	config := migrations.DefaultOptions()
-	err := config.WithRevision(1).Apply(ctx, db)
+	err := options.WithRevision(1).Apply(ctx, db)
 	assert.Nil(err)
 
 	err = tableExists(ctx, "drawbridge.schema_migrations")
@@ -74,7 +74,7 @@ func TestUp(t *testing.T) {
 	assert.Nil(err)
 
 	rows, err := db.Query(ctx, "select name from samples where name = 'Bob'")
-	assert.Nil(err)
+	require.Nil(t, err)
 
 	var name string
 	for rows.Next() {
@@ -86,23 +86,25 @@ func TestUp(t *testing.T) {
 	assert.NotEmpty(name)
 
 	// Check that rollbacks are loaded in the database
-	rows, err = db.Query(ctx, "select migration, down from migrations.rollbacks")
+	rows, err = db.Query(ctx, "select migration, rollback from drawbridge.schema_migrations")
 	assert.Nil(err)
 
 	var found int
 
-	var migration, down string
+	var migration string
+	var down sql.NullString
+
 	for rows.Next() {
 		found++
 
 		err = rows.Scan(&migration, &down)
 		assert.Nil(err)
 
-		SQL, err := migrations.ReadSQL(reader, "./testdata/"+migration, migrations.Down)
+		SQL, err := migrations.ReadSQL(options.Reader, "./testdata/"+migration, migrations.Down)
 		assert.Nil(err)
 
 		SQL = strings.TrimSpace(SQL)
-		assert.NotEqual(SQL, down)
+		assert.NotEqual(SQL, down.String)
 	}
 
 	assert.NotEqual(found, 0)
@@ -270,6 +272,9 @@ func TestUp(t *testing.T) {
 //func migrate(revision int) error {
 //	return migrations.WithRevision(revision).Apply(conn)
 //}
+
+// TODO: test different metadata table name
+// TODO: test metadata table in public, i.e. no schema
 
 // Clean out the database.
 func clean(t *testing.T, ctx context.Context) {

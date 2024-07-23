@@ -56,7 +56,7 @@ create table sample(
 
 create unique index idx_sample_name on sample (name);
 
---- !Drop
+--- !Down
 drop table sample;`
 
 	sql, err := migrations.ReadSQL(reader, doc, migrations.Up)

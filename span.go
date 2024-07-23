@@ -10,6 +10,8 @@ var (
 	// ErrRolledBack returned if a multi-level transaction is committed after it has
 	// been rolled back.
 	ErrRolledBack = errors.New("transaction rolled back")
+
+	ErrCommitted = errors.New("transaction already committed")
 )
 
 // Span presents the standard [sql.Conn] and [sql.Tx] with a common interface.  The
@@ -63,7 +65,7 @@ type Span interface {
 	// otherwise safe to call multiple times. If the commit fails with a rollback
 	// status (e.g. the transaction was already in a broken state) then an error where
 	// errors.Is(ErrTxCommitRollback) is true will be returned.
-	Commit(ctx context.Context) error
+	Commit() error
 
 	// Exec executes a query without returning any rows.  The args are for any
 	// placeholder parameters in the query.
@@ -79,6 +81,9 @@ type Span interface {
 	// return [sql.ErrNoRows].  Otherwise, [*sql.Row.Scan] scans the first selected
 	// row and discards the rest.
 	QueryRow(ctx context.Context, sql string, args ...any) *sql.Row
+
+	// InTx returns true if this Span is a transaction.
+	InTx() bool
 }
 
 // TxClose is a shorthand function to use in a defer statement.  If the transaction fails

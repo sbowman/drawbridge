@@ -34,12 +34,7 @@ func Open(uri string) (*DB, error) {
 }
 
 func (db *DB) Begin(ctx context.Context) (drawbridge.Span, error) {
-	tx, err := db.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Tx{Tx: tx}, nil
+	return db.newTx(ctx)
 }
 
 // Close does nothing at the DB level.  See [DB.Shutdown] to properly close the
@@ -62,7 +57,7 @@ func (db *DB) Shutdown() error {
 }
 
 // Commit does nothing at the DB level.
-func (db *DB) Commit(_ context.Context) error {
+func (db *DB) Commit() error {
 	return nil
 }
 
@@ -76,4 +71,8 @@ func (db *DB) Query(ctx context.Context, sql string, args ...any) (*sql.Rows, er
 
 func (db *DB) QueryRow(ctx context.Context, sql string, args ...any) *sql.Row {
 	return db.DB.QueryRowContext(ctx, sql, args...)
+}
+
+func (db *DB) InTx() bool {
+	return false
 }

@@ -28,7 +28,7 @@ func (db *DB) BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error) {
 }
 
 // Commit does nothing on a connection, since you're not in a transaction.
-func (db *DB) Commit(_ context.Context) error {
+func (db *DB) Commit() error {
 	return nil
 }
 
@@ -44,4 +44,9 @@ func (db *DB) Close(_ context.Context) error {
 // to release all the database pool connections.
 func (db *DB) Shutdown() {
 	db.Pool.Close()
+}
+
+// InTx on a database connection returns false.
+func (db *DB) InTx() bool {
+	return false
 }

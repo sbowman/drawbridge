@@ -36,3 +36,8 @@ func (tx *Tx) BeginTx(ctx context.Context, _ pgx.TxOptions) (Span, error) {
 func (tx *Tx) Close(ctx context.Context) error {
 	return tx.Tx.Rollback(ctx)
 }
+
+// InTx on a transaction always returns true.
+func (tx *Tx) InTx() bool {
+	return true
+}

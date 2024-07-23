@@ -7,46 +7,63 @@ import (
 )
 
 // Tracks subtransaction commits and rollbacks
-type txState int
+type txState uint8
 
 const (
 	txPending txState = iota
-	txRollback
 	txCommit
 )
 
 type Tx struct {
 	*sql.Tx
 
-	current  txState
-	history  []txState
-	rollback bool
+	depth      []txState
+	inRollback bool
+}
+
+// Create a new Span-compatible transaction that supports sub-transactions.
+func (db *DB) newTx(ctx context.Context) (*Tx, error) {
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Tx{
+		Tx:         tx,
+		depth:      []txState{txPending},
+		inRollback: false,
+	}, nil
 }
 
 // Begin manages multi-level transactions in the context of the [drawbridge.Span]
 // interface.
 func (tx *Tx) Begin(_ context.Context) (drawbridge.Span, error) {
-	if tx.rollback {
+	if tx.inRollback {
 		return nil, drawbridge.ErrRolledBack
 	}
 
-	tx.save()
+	tx.depth = append(tx.depth, txPending)
 
 	return tx, nil
 }
 
 // Commit the transaction.  If the transaction is a "sub transaction," pops the history
 // based on the rollback state.
-func (tx *Tx) Commit(_ context.Context) error {
-	if tx.rollback {
+func (tx *Tx) Commit() error {
+	if tx.inRollback {
 		return drawbridge.ErrRolledBack
 	}
 
-	if len(tx.history) == 0 {
+	if tx.current() == txCommit {
+		return drawbridge.ErrCommitted
+	}
+
+	tx.state(txCommit)
+
+	if len(tx.depth) == 1 {
 		return tx.Tx.Commit()
 	}
 
-	tx.current = txCommit
 	return nil
 }
 
@@ -59,20 +76,14 @@ func (tx *Tx) Commit(_ context.Context) error {
 //
 // Any other failure of a real transaction will result in the connection being closed.
 func (tx *Tx) Close(_ context.Context) error {
-	defer tx.release()
+	defer tx.pop()
 
-	if tx.current != txPending {
+	if tx.current() != txPending {
 		return nil
 	}
 
-	if err := tx.Tx.Rollback(); err != nil {
-		return err
-	}
-
-	tx.current = txRollback
-	tx.rollback = true
-
-	return nil
+	tx.inRollback = true
+	return tx.Tx.Rollback()
 }
 
 func (tx *Tx) Exec(ctx context.Context, sql string, arguments ...any) (sql.Result, error) {
@@ -87,17 +98,18 @@ func (tx *Tx) QueryRow(ctx context.Context, sql string, args ...any) *sql.Row {
 	return tx.Tx.QueryRowContext(ctx, sql, args...)
 }
 
-// Save the state of the transaction on the stack.
-func (tx *Tx) save() {
-	tx.history = append(tx.history, tx.current)
-	tx.current = txPending
+func (tx *Tx) InTx() bool {
+	return true
 }
 
-// Remove the transaction state from the stack, and update the current state.
-func (tx *Tx) release() {
-	if len(tx.history) == 0 {
-		return
-	}
+func (tx *Tx) current() txState {
+	return tx.depth[len(tx.depth)-1]
+}
 
-	tx.current, tx.history = tx.history[len(tx.history)-1], tx.history[:len(tx.history)-1]
+func (tx *Tx) state(value txState) {
+	tx.depth[len(tx.depth)-1] = value
+}
+
+func (tx *Tx) pop() {
+	tx.depth = tx.depth[:len(tx.depth)-1]
 }

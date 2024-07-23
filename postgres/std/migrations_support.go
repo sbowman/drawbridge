@@ -22,9 +22,29 @@ var (
 	ErrTableNameRequired = errors.New("metadata table name is required")
 )
 
-// CreateMetadata panics on a simple database connection.
-func (db *DB) CreateMetadata(_ context.Context, _, _ string) (string, error) {
-	panic("You should not create the metadata table outside a transaction!")
+// CreateMetadata creates the migrations package's metadata table in the requested schema
+// and table if it doesn't already exist.  Returns the table name to use for the metadata.
+func (db *DB) CreateMetadata(ctx context.Context, schema, table string) (string, error) {
+	if stmt, err := createSchemaStmt(schema); err != nil {
+		return "", err
+	} else if stmt != "" && missingMetadataSchema(ctx, db, schema) {
+		if _, err := db.Exec(ctx, stmt); err != nil {
+			return "", err
+		}
+	}
+
+	name, err := metadataName(schema, table)
+	if err != nil {
+		return "", err
+	}
+
+	if missingMetadataTable(ctx, db, schema, table) {
+		if _, err := db.Exec(ctx, createTableStmt(name)); err != nil {
+			return "", err
+		}
+	}
+
+	return name, nil
 }
 
 // CreateMetadata creates the migrations package's metadata table in the requested schema
@@ -65,7 +85,7 @@ func (db *DB) UnlockMetadata(_ context.Context, _ string) {
 // LockMetadata locks the metadata table to prevent other processes from applying
 // migrations simultaneously.
 func (tx *Tx) LockMetadata(ctx context.Context, metadataTable string) error {
-	_, err := tx.Exec(ctx, "lock table "+metadataTable+"in access exclusive mode")
+	_, err := tx.Exec(ctx, "lock table "+metadataTable+" in access exclusive mode")
 	return err
 }
 
@@ -82,11 +102,11 @@ func missingMetadataSchema(ctx context.Context, span drawbridge.Span, schema str
 		return false
 	}
 
-	row := span.QueryRow(ctx, "SELECT not exists(select schema_name FROM information_schema.schemata WHERE schema_name = '$1')", schema)
-
 	var result bool
+
+	row := span.QueryRow(ctx, "SELECT not(exists(select schema_name FROM information_schema.schemata WHERE schema_name = $1))", schema)
 	if err := row.Scan(&result); err != nil {
-		return true
+		panic(fmt.Sprintf("Unable to query for the metadata schema, %s", err))
 	}
 
 	return result
@@ -102,11 +122,11 @@ func missingMetadataTable(ctx context.Context, span drawbridge.Span, schema, tab
 	row := span.QueryRow(ctx, "select not(exists(select 1 from pg_catalog.pg_class c "+
 		"join pg_catalog.pg_namespace n "+
 		"on n.oid = c.relnamespace "+
-		"where n.nspname = '$1' and c.relname = '$2'))", schema, table)
+		"where n.nspname = $1 and c.relname = $2))", schema, table)
 
 	var result bool
 	if err := row.Scan(&result); err != nil {
-		return true
+		panic(fmt.Sprintf("Unable to query for the metadata table, %s", err))
 	}
 
 	return result
