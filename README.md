@@ -222,8 +222,6 @@ container.
 
 #### Installing the Command-Line Tool
 
-TBD - this is not yet available
-
 To install the command-line tool, run:
 
     $ go install github.com/sbowman/migrate/v2@latest
