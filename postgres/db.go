@@ -28,7 +28,7 @@ func (db *DB) BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error) {
 }
 
 // Commit does nothing on a connection, since you're not in a transaction.
-func (db *DB) Commit() error {
+func (db *DB) Commit(context.Context) error {
 	return nil
 }
 
