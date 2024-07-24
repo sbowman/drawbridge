@@ -15,7 +15,8 @@ import (
 	"strings"
 )
 
-// FromPool creates a postgres.Span-compatible object.
+// FromPool creates a postgres.Span-compatible object.  Note this approach does not
+// include the uuid functionality by default; you must register that separately.
 func FromPool(pool *pgxpool.Pool) *DB {
 	return &DB{pool}
 }

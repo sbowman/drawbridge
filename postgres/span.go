@@ -22,7 +22,7 @@ type Span interface {
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error)
 
 	// Commit the transaction.
-	Commit(ctx context.Context) error
+	Commit() error
 
 	// Close will do one of these things:
 	//
