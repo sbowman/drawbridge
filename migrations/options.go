@@ -33,11 +33,11 @@ type Options struct {
 	// EmbeddedRollbacks enables embedded rollbacks.  Defaults to true.
 	EmbeddedRollbacks bool
 
-	// SchemaMigrations points to the database table used to manage the schema
+	// MetadataTable points to the database table used to manage the schema
 	// changes.
-	SchemaMigrations struct {
+	MetadataTable struct {
 		Schema string
-		Table  string
+		Name   string
 	}
 
 	// Reader defaults to the DiskReader for querying and ingesting migration files.
@@ -49,7 +49,7 @@ type Options struct {
 // * Revision: Latest (`DB_REVISION`)
 // * Directory: ./sql (`DB_MIGRATIONS`)
 // * EmbeddedRollbacks: true (`DB_EMBED`)
-// * SchemaMigrations: drawbridge.schema_migrations
+// * MetadataTable: drawbridge.schema_migrations
 //
 // Note that the schema migrations table is not configurable via an environment variable.
 // It may be overridden by the application, but it's a bad idea to make this configurable.
@@ -144,12 +144,12 @@ func (options Options) WithSchemaTable(schemaTable string) Options {
 	parts := strings.Split(schemaTable, ".")
 	switch len(parts) {
 	case 1:
-		options.SchemaMigrations.Schema = "public"
-		options.SchemaMigrations.Table = parts[0]
+		options.MetadataTable.Schema = "public"
+		options.MetadataTable.Name = parts[0]
 
 	case 2:
-		options.SchemaMigrations.Schema = parts[0]
-		options.SchemaMigrations.Table = parts[1]
+		options.MetadataTable.Schema = parts[0]
+		options.MetadataTable.Name = parts[1]
 	}
 
 	return options

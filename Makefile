@@ -21,4 +21,14 @@ db_postgres:
 	@psql -U drawbridge template1 -c "select 1;" > /dev/null 2>&1 || createuser -d drawbridge
 	@psql -U drawbridge drawbridge_test -c "select 1;" > /dev/null 2>&1 || createdb -U drawbridge drawbridge_test
 
+.PHONY: tidy
+tidy:
+	@go mod tidy
+	@cd postgres && go mod tidy
+	@cd migrations/pgxtest && go mod tidy
+	@cd migrations/cli && go mod tidy
+
+migrate: migrations/cli
+	@go build -C migrations/cli
+	@mv migrations/cli/migrate .
 

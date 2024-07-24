@@ -89,15 +89,15 @@ func Begin(ctx context.Context, span drawbridge.Span) (Span, error) {
 	return stx, nil
 }
 
-// Create a new migration from the template.
-func (options Options) Create(name string) error {
+// Create a new migration from the template.  Returns the full path to the created file.
+func (options Options) Create(name string) (string, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return ErrNameRequired
+		return "", ErrNameRequired
 	}
 
 	if err := os.MkdirAll(options.Directory, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	r := LatestRevision(options.Reader, options.Directory) + 1
@@ -105,10 +105,10 @@ func (options Options) Create(name string) error {
 	path := fmt.Sprintf("%s%c%s", options.Directory, os.PathSeparator, fullname)
 
 	if err := os.WriteFile(path, []byte("--- !Up\n\n--- !Down\n\n"), 0644); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return path, nil
 }
 
 // Apply any SQL migrations to the database.
@@ -126,8 +126,8 @@ func (options Options) Create(name string) error {
 //
 // Note `span` should be a database connection or pool, not a transaction.
 func (options Options) Apply(ctx context.Context, span Span) error {
-	schema := options.SchemaMigrations.Schema
-	table := options.SchemaMigrations.Table
+	schema := options.MetadataTable.Schema
+	table := options.MetadataTable.Name
 
 	metadataTable, err := span.CreateMetadata(ctx, schema, table)
 	if err != nil {
@@ -207,9 +207,17 @@ func (m Migration) ReadAndApply(ctx context.Context, path string) error {
 }
 
 // Rollback a number of migrations.
-func (options Options) Rollback(ctx context.Context, span Span, metadataTable string, steps int) error {
+func (options Options) Rollback(ctx context.Context, span Span, steps int) error {
 	if steps < 1 {
 		return ErrInvalidStep
+	}
+
+	schema := options.MetadataTable.Schema
+	table := options.MetadataTable.Name
+
+	metadataTable, err := span.CreateMetadata(ctx, schema, table)
+	if err != nil {
+		return err
 	}
 
 	latest, err := LatestMigration(ctx, span, metadataTable)

@@ -20,6 +20,9 @@ go.work.sum
 # env file
 .env
 
+# CLI binary
+migrate
+
 .DS_Store
 ._*
 .idea

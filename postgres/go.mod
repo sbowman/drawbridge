@@ -5,7 +5,7 @@ go 1.22.5
 require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
-	github.com/sbowman/drawbridge v0.9.0
+	github.com/sbowman/drawbridge v0.9.1
 	github.com/stretchr/testify v1.8.1
 )
 

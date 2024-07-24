@@ -41,7 +41,7 @@ func TestTransaction(t *testing.T) {
 	assert.ErrorIs(err, pgx.ErrTxClosed)
 	assert.NotNil(err)
 
-	// Table should be gone...
+	// Name should be gone...
 	row = db.QueryRow(ctx, "select email from simple where id = $1", id)
 	err = row.Scan(&email)
 
@@ -116,7 +116,7 @@ func TestSubTransactionRollback(t *testing.T) {
 	assert.ErrorIs(err, pgx.ErrTxClosed)
 	assert.NotNil(err)
 
-	// Table should be gone...
+	// Name should be gone...
 	row = db.QueryRow(ctx, "select id from subtxtest where email = 'abc@nowhere.com'")
 	err = row.Scan(&id)
 
