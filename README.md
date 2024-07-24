@@ -226,7 +226,7 @@ TBD - this is not yet available
 
 To install the command-line tool, run:
 
-    $ go install github.com/sbowman/dbmigrate@v0.9.0
+    $ go install github.com/sbowman/migrate/v2@latest
 
 This will install the `migrate` binary into your `$GOPATH/bin` directory. If that
 directory is on your PATH, you should be able to run migrations from anywhere.
