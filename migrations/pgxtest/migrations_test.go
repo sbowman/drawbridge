@@ -4,13 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgconn"
+	"os"
+	"strings"
+	"testing"
+
 	"github.com/sbowman/drawbridge/migrations"
 	"github.com/sbowman/drawbridge/postgres/std"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"os"
-	"strings"
-	"testing"
 )
 
 const (
@@ -110,168 +112,141 @@ func TestUp(t *testing.T) {
 	assert.NotEqual(found, 0)
 }
 
-//// Make sure revisions, i.e. partial migrations, are working.
-//func TestRevisions(t *testing.T) {
-//	defer clean(t)
-//
-//	if err := migrate(1); err != nil {
-//		t.Fatalf("Unable to run migration to revision 1: %s", err)
-//	}
-//
-//	if _, err := conn.Exec("insert into samples (name, email) values ('Bob', 'bob@home.com')"); err == nil {
-//		t.Error("Expected inserting an email address to fail")
-//	}
-//
-//	if err := migrate(2); err != nil {
-//		t.Fatalf("Unable to run migration to revision 2: %s", err)
-//	}
-//
-//	if _, err := conn.Exec("insert into samples (name, email) values ('Bob', 'bob@home.com')"); err != nil {
-//		t.Errorf("Expected to be able to insert email address after revision 2: %s", err)
-//	}
-//
-//	rows, err := conn.Query("select email from samples where name = 'Bob'")
-//	if err != nil {
-//		t.Errorf("Didn't find expected record in database: %s", err)
-//	}
-//
-//	var email string
-//	for rows.Next() {
-//		if err := rows.Scan(&email); err != nil {
-//			t.Errorf("Failed to get email from database: %s", err)
-//		}
-//
-//		if email != "bob@home.com" {
-//			t.Errorf("Expected email bob@home.com for Bob, got %s", email)
-//		}
-//	}
-//
-//	if email == "" {
-//		t.Error("Email not found")
-//	}
-//}
-//
-//// Make sure migrations can be rolled back.
-//func TestDown(t *testing.T) {
-//	defer clean(t)
-//
-//	if err := migrate(2); err != nil {
-//		t.Fatalf("Unable to run migration to revision 2: %s", err)
-//	}
-//
-//	if _, err := conn.Exec("insert into samples (name, email) values ('Bob', 'bob@home.com')"); err != nil {
-//		t.Errorf("Expected to be able to insert email address after revision 2: %s", err)
-//	}
-//
-//	rows, err := conn.Query("select email from samples where name = 'Bob'")
-//	if err != nil {
-//		t.Errorf("Didn't find expected record in database: %s", err)
-//	}
-//
-//	var email string
-//	for rows.Next() {
-//		if err := rows.Scan(&email); err != nil {
-//			t.Errorf("Failed to get email from database: %s", err)
-//		}
-//
-//		if email != "bob@home.com" {
-//			t.Errorf("Expected email bob@home.com for Bob, got %s", email)
-//		}
-//	}
-//
-//	if email == "" {
-//		t.Error("Email not found")
-//	}
-//
-//	// Rollback
-//	if err := migrate(1); err != nil {
-//		t.Fatalf("Unable to run migration to revision 1: %s", err)
-//	}
-//
-//	// Is the rollback in the database gone?
-//	row := conn.QueryRow("select exists(select migration from migrations.rollbacks where migration = '2-add-email-to-sample.sql')")
-//	if row == nil {
-//		t.Errorf("Unable to query for rollback: %s", err)
-//	} else {
-//		var found bool
-//		if err := row.Scan(&found); err != nil {
-//			t.Errorf("Unable to query for rollback: %s", err)
-//		} else if found {
-//			t.Errorf("Failed to delete the rollback migration for 2-add-email-to-sample.sql")
-//		}
-//	}
-//
-//	if _, err := conn.Exec("insert into samples (name, email) values ('Alice', 'alice@home.com')"); err == nil {
-//		t.Error("Expected inserting an email address to fail")
-//	}
-//
-//	_, err = conn.Query("select email from samples where name = 'Bob'")
-//	if err == nil {
-//		t.Error("Expected an error, as the email column shouldn't exist")
-//	}
-//
-//	rows, err = conn.Query("select name from samples where name = 'Alice'")
-//	if err != nil {
-//		t.Errorf("Unable to query for samples: %s", err)
-//	}
-//
-//	for rows.Next() {
-//		t.Errorf("Did not expect results from the query")
-//	}
-//}
-//
-//// Is the simplified Rollback function working?
-//func TestRollback(t *testing.T) {
-//	defer clean(t)
-//
-//	if err := migrate(2); err != nil {
-//		t.Fatalf("Unable to run migration to revision 2: %s", err)
-//	}
-//
-//	if _, err := conn.Exec("insert into samples (name, email) values ('Bob', 'bob@home.com')"); err != nil {
-//		t.Errorf("Expected insert to succeed: %s", err)
-//	}
-//
-//	if err := migrations.Rollback(conn, "./sql", 1); err != nil {
-//		t.Fatalf("Unable to rollback migration to revision 1: %s", err)
-//	}
-//
-//	_, err := conn.Query("select email from samples where name = 'Bob'")
-//	if err == nil {
-//		t.Error("Expected querying for the rolled-back column to fail")
-//	}
-//}
-//
-//// Under normal circumstances, if part of a migration fails, the whole migration false.
-//func TestTransactions(t *testing.T) {
-//	defer clean(t)
-//
-//	if err := migrate(3); err == nil {
-//		t.Error("Expected migration to fail")
-//	}
-//
-//	rows, err := conn.Query("select name from samples where name = 'abc'")
-//	if err != nil {
-//		t.Fatalf("Unable to query for sample names:%s", err)
-//	}
-//
-//	for rows.Next() {
-//		var name string
-//		if err := rows.Scan(&name); err != nil {
-//			t.Errorf("Unable to scan results: %s", err)
-//			continue
-//		}
-//
-//		if name == "abc" {
-//			t.Error("Unexpected abc value")
-//		}
-//	}
-//}
-//
-//// Shortcut to run the test migrations in the sql directory.
-//func migrate(revision int) error {
-//	return migrations.WithRevision(revision).Apply(conn)
-//}
+// Make sure revisions, i.e. partial migrations, are working.
+func TestRevisions(t *testing.T) {
+	ctx := context.Background()
+	assert := assert.New(t)
+
+	defer clean(t, ctx)
+
+	options := migrations.WithDirectory("./testdata")
+
+	err := options.WithRevision(1).Apply(ctx, db)
+	assert.Nil(err, "Unable to run migration to revision 1")
+
+	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Bob', 'bob@home.com')")
+	assert.Error(err, "Expected inserting an email address to fail")
+
+	err = options.WithRevision(2).Apply(ctx, db)
+	assert.Nil(err, "Unable to run migration to revision 2")
+
+	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Bob', 'bob@home.com')")
+	assert.Nil(err, "Expected to be able to insert email address after revision 2")
+
+	rows, err := db.Query(ctx, "select email from samples where name = 'Bob'")
+	require.Nil(t, err)
+
+	var email string
+	for rows.Next() {
+		err := rows.Scan(&email)
+		assert.Nil(err, "Failed to get email from database")
+		assert.Equal(email, "bob@home.com")
+	}
+
+	assert.NotEmpty(email)
+}
+
+// Make sure migrations can be rolled back.
+func TestDown(t *testing.T) {
+	ctx := context.Background()
+	assert := assert.New(t)
+
+	defer clean(t, ctx)
+
+	options := migrations.WithDirectory("./testdata")
+
+	err := options.WithRevision(2).Apply(ctx, db)
+	require.Nil(t, err)
+
+	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Bob', 'bob@home.com')")
+	assert.Nil(err)
+
+	rows, err := db.Query(ctx, "select email from samples where name = 'Bob'")
+	require.Nil(t, err)
+
+	var email string
+	for rows.Next() {
+		err := rows.Scan(&email)
+		assert.Nil(err)
+		assert.Equal(email, "bob@home.com")
+	}
+
+	assert.NotEmpty(email)
+
+	// Rollback
+	err = options.WithRevision(1).Apply(ctx, db)
+	require.Nil(t, err)
+
+	// Is the rollback in the database gone?
+	row := db.QueryRow(ctx, "select exists(select migration from drawbridge.schema_migrations where migration = '2-add-email-to-sample.sql')")
+
+	var found bool
+	err = row.Scan(&found)
+	assert.Nil(err)
+	assert.False(found)
+
+	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Alice', 'alice@home.com')")
+	assert.Error(err)
+
+	var pgerr *pgconn.PgError
+	assert.ErrorAs(err, &pgerr)
+	assert.Equal(pgerr.Code, "42703") // i.e., column does not exist
+
+	_, err = db.Query(ctx, "select email from samples where name = 'Bob'")
+	assert.Error(err)
+
+	rows, err = db.Query(ctx, "select name from samples where name = 'Alice'")
+	require.Nil(t, err)
+
+	for rows.Next() {
+		t.Errorf("Did not expect results from the query")
+	}
+}
+
+// Is the simplified Rollback function working?
+func TestRollback(t *testing.T) {
+	ctx := context.Background()
+	assert := assert.New(t)
+
+	defer clean(t, ctx)
+
+	options := migrations.WithDirectory("./testdata")
+
+	err := options.WithRevision(2).Apply(ctx, db)
+	assert.Nil(err)
+
+	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Bob', 'bob@home.com')")
+	assert.Nil(err)
+
+	err = options.Rollback(ctx, db, "drawbridge.schema_migrations", 1)
+	require.Nil(t, err)
+
+	_, err = db.Query(ctx, "select email from samples where name = 'Bob'")
+	assert.Error(err)
+}
+
+// Under normal circumstances, if part of a migration fails, the whole migration false.
+func TestTransactions(t *testing.T) {
+	assert := assert.New(t)
+	ctx := context.Background()
+
+	defer clean(t, ctx)
+
+	options := migrations.WithDirectory("./testdata")
+
+	err := options.WithRevision(3).Apply(ctx, db)
+	assert.Error(err)
+
+	rows, err := db.Query(ctx, "select name from samples where name = 'abc'")
+	require.Nil(t, err)
+
+	for rows.Next() {
+		var name string
+		err := rows.Scan(&name)
+		assert.Nil(err)
+		assert.Equal(name, "abc")
+	}
+}
 
 // TODO: test different metadata table name
 // TODO: test metadata table in public, i.e. no schema

@@ -3,13 +3,14 @@ package std_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"testing"
+
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sbowman/drawbridge"
 	"github.com/sbowman/drawbridge/postgres/std"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 const (
