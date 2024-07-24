@@ -224,7 +224,7 @@ container.
 
 To install the command-line tool, run:
 
-    $ go install github.com/sbowman/drawbridge/migrations/cli@v1.0.0
+    $ go install github.com/sbowman/drawbridge/migrations/cli@v0.9.1
 
 This will install the `migrate` binary into your `$GOPATH/bin` directory. If that
 directory is on your PATH, you should be able to run migrations from anywhere.
