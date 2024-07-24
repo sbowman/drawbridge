@@ -26,9 +26,4 @@ tidy:
 	@go mod tidy
 	@cd postgres && go mod tidy
 	@cd migrations/pgxtest && go mod tidy
-	@cd migrations/cli && go mod tidy
-
-migrate: migrations/migrate
-	@go build -C migrations/cli
-	@mv migrations/cli/migrate .
 
