@@ -21,6 +21,9 @@ type Span interface {
 	// for the wrapping transaction are used.
 	BeginTx(ctx context.Context, opts pgx.TxOptions) (Span, error)
 
+	// InTx returns true if this Span wraps a transaction.
+	InTx() bool
+
 	// Commit the transaction.
 	Commit(ctx context.Context) error
 
