@@ -47,6 +47,16 @@ var (
 	// ErrUpDownBlocksNotFound returned if the SQL migration file doesn't look valid.
 	ErrUpDownBlocksNotFound = errors.New("no up or down blocks found in migration")
 
+	// ErrMigrateRequired returned if the the latest migration applied to the database
+	// has a lower revision than the latest available migration file.
+	ErrMigrateRequired = errors.New("migration required")
+
+	// ErrRollbackRequired returned if the the latest migration applied to the
+	// database has a higher revision than the latest available migration file.  This
+	// is likely to happen when an application deployment was rolled back to a
+	// previous version.
+	ErrRollbackRequired = errors.New("rollback required")
+
 	// Matches the Up/Down sections in the SQL migration file
 	dirRe = regexp.MustCompile(`^---\s+!(Up|Down).*$`)
 )
@@ -111,6 +121,46 @@ func (options Options) Create(name string) (string, error) {
 	return path, nil
 }
 
+// AtLatest returns nil if the database has been migrated to the latest revision, as
+// indicated by the SQL file versions.  If there are new migrations yet to be applied,
+// returns ErrMigrateRequired.  If the database is ahead of the current revision, e.g.
+// the app was downgraded, returns ErrRollbackRequired.
+//
+// You can use this function on your application's startup to let the user know if a
+// migration is required or not, without automatically applying a migration.  This
+// function does not modify the database in any way.
+func (options Options) AtLatest(ctx context.Context, span Span) error {
+	available := LatestRevision(options.Reader, options.Directory)
+
+	schema := options.MetadataTable.Schema
+	table := options.MetadataTable.Name
+
+	metadataTable, err := span.CreateMetadata(ctx, schema, table)
+	if err != nil {
+		return err
+	}
+
+	latestMigration, err := LatestMigration(ctx, span, metadataTable)
+	if err != nil {
+		return err
+	}
+
+	applied, err := Revision(latestMigration)
+	if err != nil {
+		return err
+	}
+
+	if applied == available {
+		return nil
+	}
+
+	if applied < available {
+		return ErrMigrateRequired
+	}
+
+	return ErrRollbackRequired
+}
+
 // Apply any SQL migrations to the database.
 //
 // Any files that don't have entries in the migrations table will be run to bring the
@@ -170,6 +220,8 @@ type Migration struct {
 	rollbacks     bool      // support embedded rollbacks?
 }
 
+// TODO: function to check the database version and the latest SQL revision and warn if not up to date!
+
 // ReadAndApply reads the SQL from the migration file identified by `path` and applies the
 // SQL for the direction, provided the revision is correct, all in a single transaction.
 //
@@ -195,7 +247,8 @@ func (m Migration) ReadAndApply(ctx context.Context, path string) error {
 
 		_, err = tx.Exec(ctx, SQL)
 		if err != nil {
-			return err
+			// fmt.Errorf isn't my favorite, but we need the migration name
+			return fmt.Errorf("migration %s (%s) failed: %w", path, m.direction, err)
 		}
 
 		if err = Migrated(ctx, tx, m.reader, m.metadataTable, path, m.direction, m.rollbacks); err != nil {
@@ -264,8 +317,8 @@ func Available(reader Reader, directory string, direction Direction) ([]string, 
 	return filenames, nil
 }
 
-// LatestRevision returns the latest revision available from the SQL files in
-// the migrations directory.
+// LatestRevision returns the latest revision available from the SQL files in the
+// migrations directory.
 func LatestRevision(reader Reader, directory string) int {
 	migrations, err := Available(reader, directory, Down)
 	if err != nil {

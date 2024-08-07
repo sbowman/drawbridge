@@ -218,7 +218,7 @@ func TestRollback(t *testing.T) {
 	_, err = db.Exec(ctx, "insert into samples (name, email) values ('Bob', 'bob@home.com')")
 	assert.Nil(err)
 
-	err = options.Rollback(ctx, db, "drawbridge.schema_migrations", 1)
+	err = options.Rollback(ctx, db, 1)
 	require.Nil(t, err)
 
 	_, err = db.Query(ctx, "select email from samples where name = 'Bob'")

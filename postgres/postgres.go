@@ -77,6 +77,22 @@ func UniqueViolation(err error) bool {
 	return false
 }
 
+// MissingReference returns true if a record was inserted or updated to contain a foreign
+// key reference to a record that doesn't exist.  For example, if you try to insert the
+// wrong `user_id` into a table that references `users(id)`.
+func MissingReference(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgerr *pgconn.PgError
+	if errors.As(err, &pgerr) {
+		return pgerr.Severity == "ERROR" && pgerr.Code == CodeForeignKeyViolation
+	}
+
+	return false
+}
+
 // NotFound returns true if the error contains a pgx.ErrorNoRows indicating no results
 // were found for the database query.
 func NotFound(err error) bool {
