@@ -2,8 +2,8 @@
 insert into samples (name)
 values ('abc');
 
-insert into samples (email)
-values ('zzz');
+insert into samples (name, email)
+values ('zzz', '123@nowhere.com');
 
 --- !Down
 delete

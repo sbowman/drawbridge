@@ -248,8 +248,68 @@ func TestTransactions(t *testing.T) {
 	}
 }
 
-// TODO: test different metadata table name
-// TODO: test metadata table in public, i.e. no schema
+func TestCustomMetadataTable(t *testing.T) {
+	assert := assert.New(t)
+	ctx := context.Background()
+
+	// defer clean(t, ctx)
+
+	options := migrations.WithDirectory("./testdata").WithSchemaTable("migrations")
+
+	err := options.Apply(ctx, db)
+	assert.Nil(err)
+
+	// Is there a "migrations" table in the public schema?
+	err = tableExists(ctx, "migrations")
+	assert.Nil(err)
+
+	// Does it contain the migrations?
+	rows, err := db.Query(ctx, "select migration from migrations")
+	assert.Nil(err)
+
+	migrations := []string{
+		"1-create-sample.sql",
+		"2-add-email-to-sample.sql",
+		"3-sample-data.sql",
+	}
+
+	for rows.Next() {
+		var migration string
+		err := rows.Scan(&migration)
+		assert.Nil(err)
+
+		var remaining []string
+		found := false
+		for _, m := range migrations {
+			if m != migration {
+				remaining = append(remaining, m)
+				continue
+			}
+			found = true
+		}
+
+		assert.True(found)
+		migrations = remaining
+	}
+
+	assert.Empty(migrations)
+
+	// There should not be a "drawbridge" schema
+	row := db.QueryRow(ctx, "select not(exists (select 1 from pg_catalog.pg_namespace n where n.nspname = 'drawbridge'))")
+
+	result := false
+	err = row.Scan(&result)
+	assert.Nil(err)
+	assert.True(result)
+
+	err = tableExists(ctx, "drawbridge.migrations")
+	assert.Error(err)
+	assert.ErrorIs(err, sql.ErrNoRows)
+
+	err = tableExists(ctx, "drawbridge.schema_migrations")
+	assert.Error(err)
+	assert.ErrorIs(err, sql.ErrNoRows)
+}
 
 // Clean out the database.
 func clean(t *testing.T, ctx context.Context) {
@@ -257,6 +317,16 @@ func clean(t *testing.T, ctx context.Context) {
 		if _, err := db.Exec(ctx, "delete from drawbridge.schema_migrations"); err != nil {
 			t.Fatalf("Unable to clear the migrations.applied table: %s", err)
 		}
+	}
+
+	_, err := db.Exec(ctx, "drop table if exists drawbridge.schema_migrations")
+	if err != nil {
+		t.Fatalf("Unable to drop drawbridge.schema_migrations table: %s", err)
+	}
+
+	_, err = db.Exec(ctx, "drop schema if exists drawbridge")
+	if err != nil {
+		t.Fatalf("Unable to drop drawbridge schema: %s", err)
 	}
 
 	rows, err := db.Query(ctx, "select table_name from information_schema.tables where table_schema='public'")

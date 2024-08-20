@@ -50,6 +50,7 @@ func (db *DB) CreateMetadata(ctx context.Context, schema, table string) (string,
 // CreateMetadata creates the migrations package's metadata table in the requested schema
 // and table if it doesn't already exist.  Returns the table name to use for the metadata.
 func (tx *Tx) CreateMetadata(ctx context.Context, schema, table string) (string, error) {
+	fmt.Println("looking for", schema, table)
 	if stmt, err := createSchemaStmt(schema); err != nil {
 		return "", err
 	} else if stmt != "" && missingMetadataSchema(ctx, tx, schema) {
@@ -104,10 +105,14 @@ func missingMetadataSchema(ctx context.Context, span drawbridge.Span, schema str
 
 	var result bool
 
+	// fmt.Println("does", schema, "exist?")
+
 	row := span.QueryRow(ctx, "SELECT not(exists(select schema_name FROM information_schema.schemata WHERE schema_name = $1))", schema)
 	if err := row.Scan(&result); err != nil {
 		panic(fmt.Sprintf("Unable to query for the metadata schema, %s", err))
 	}
+
+	// fmt.Println("metadata schema missing?", result)
 
 	return result
 }
@@ -162,7 +167,7 @@ func createSchemaStmt(schema string) (string, error) {
 		return "", ErrInvalidSchemaName
 	}
 
-	return fmt.Sprintf("create schema %s", schema), nil
+	return fmt.Sprintf("create schema %s if not exists", schema), nil
 }
 
 // Validates the schema and table names and returns the table name and create table
