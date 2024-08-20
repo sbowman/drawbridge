@@ -252,7 +252,7 @@ func TestCustomMetadataTable(t *testing.T) {
 	assert := assert.New(t)
 	ctx := context.Background()
 
-	// defer clean(t, ctx)
+	defer clean(t, ctx)
 
 	options := migrations.WithDirectory("./testdata").WithSchemaTable("migrations")
 
