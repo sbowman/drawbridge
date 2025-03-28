@@ -167,7 +167,7 @@ func createSchemaStmt(schema string) (string, error) {
 		return "", ErrInvalidSchemaName
 	}
 
-	return fmt.Sprintf("create schema %s if not exists", schema), nil
+	return fmt.Sprintf("create schema if not exists %s", schema), nil
 }
 
 // Validates the schema and table names and returns the table name and create table

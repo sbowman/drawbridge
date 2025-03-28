@@ -10,8 +10,6 @@ require (
 	github.com/sbowman/drawbridge/postgres v0.9.9
 )
 
-require github.com/google/uuid v1.6.0 // indirect
-
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
