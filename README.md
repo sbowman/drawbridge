@@ -47,127 +47,161 @@ The `postgres` package support `jackc/pgx/v5`. To leverage this version:
 
 ### Usage
 
-    // Sample can take either a reference to the pgx database connection pool, or to a 
-    // transaction.
-    func Sample(span postgres.Span, name string) error {
-        tx, err := span.Begin()
-        if err != nil {
-            return err
-        }
-        
-        // Will automatically rollback if an error short-circuits the return
-        // before tx.Commit() is called...
-        defer tx.Close() 
+```go
+package main
 
-        res, err := conn.Exec("insert into samples (name) values ($1)", name)
-        if err != nil {
-            return err
-        }
+import (
+	"context"
+	"fmt"
+	"time"
+	"os"
 
-        check, err := res.RowsAffected()
-        if check == 0 {
-            return fmt.Errorf("Failed to insert row (%s)", err)
-        }
+	"github.com/sbowman/drawbridge/postgres"
+)
 
-        return tx.Commit()
-    }
+// Sample can take either a reference to the pgx database connection pool, or to a 
+// transaction.
+func Sample(ctx context.Context, span postgres.Span, name string) error {
+	tx, err := span.Begin(ctx)
+	if err != nil {
+		return err
+	}
 
-    func main() {
-        // Create a connection pool with max 10 connections, min 2 idle connections...
-        span, err := postgres.Open("postgres://postgres@127.0.0.1/my_db?sslmode=disable")
-        if err != nil {
-            return err
-        }
+	// Will automatically rollback if an error short-circuits the return
+	// before tx.Commit() is called...
+	defer tx.Close(ctx)
 
-        // This works...
-        if err := Sample(span, "Bob"); err != nil {
-            fmt.Println("Bob failed!", err.Error())
-        }
+	res, err := conn.Exec("insert into samples (name) values ($1)", name)
+	if err != nil {
+		return err
+	}
 
-        // So does this...
-        tx, err := span.Begin()
-        if err != nil {
-            panic(err)
-        }
+	check, err := res.RowsAffected()
+	if check == 0 {
+		return fmt.Errorf("Failed to insert row (%s)", err)
+	}
 
-        // Will automatically rollback if call to sample fails...
-        defer tx.Close() 
+	return tx.Commit(ctx)
+}
 
-        if err := Sample(tx, "Frank"); err != nil {
-            fmt.Println("Frank failed!", err.Error())
-            return
-        }
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	defer cancel()
+	
+	// Create a connection pool with max 10 connections, min 2 idle connections...
+	span, err := postgres.Open("postgres://postgres@127.0.0.1/my_db?sslmode=disable")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
-        // Don't forget to commit, or you'll automatically rollback on 
-        // "defer tx.Close()" above!
-        if err := tx.Commit(); err != nil {
-            fmt.Println("Unable to save changes to the database:", err.Error())
-        }
-    }
+	// This works...
+	if err := Sample(ctx, span, "Bob"); err != nil {
+		fmt.Println("Bob failed!", err.Error())
+	}
+
+	// So does this...
+	tx, err := span.Begin(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	// Will automatically rollback if call to sample fails...
+	defer tx.Close(ctx, )
+
+	if err := Sample(ctx, tx, "Frank"); err != nil {
+		fmt.Println("Frank failed!", err.Error())
+		return
+	}
+
+	// Don't forget to commit, or you'll automatically rollback on 
+	// "defer tx.Close()" above!
+	if err := tx.Commit(ctx); err != nil {
+		fmt.Println("Unable to save changes to the database:", err.Error())
+	}
+}
+
+```
 
 Using a `postgres.Span` parameter in a function also opens up *in situ* testing of
 database functionality. You can create a transaction in the test case and pass it to a
 function that takes a `postgres.Span`, run any tests on the results of that function, and
 simply let the transaction rollback at the end of the test to clean up.
 
-    var DB *postgres.DB
-    
-    // We'll just open one database connection pool to speed up testing, so 
-    // we're not constantly opening and closing connections.
-    func TestMain(m *testing.M) {
-	    db, err := postgres.Open(DBTestURI)
-	    if err != nil {
-	        fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
-	        os.Exit(1)
-    	}
-    	defer db.Shutdown()
-    	
-    	DB = db
-    	
-    	os.Exit(m.Run())
-    }
-    
-    // Test getting a user account from the database.  The signature for the
-    // function is:  `func GetUser(conn hermes.Conn, email string) (User, error)`
-    // 
-    // Passing a hermes.Conn value to the function means we can pass in either
-    // a reference to the database pool and really update the data, or we can
-    // pass in the same transaction reference to both the SaveUser and GetUser
-    // functions.  If we use a transaction, we can let the transaction roll back 
-    // after we test these functions, or at any failure point in the test case,
-    // and we know the data is cleaned up. 
-    func TestGetUser(t *testing.T) {
-        u := User{
-            Email: "jdoe@nowhere.com",
-            Name: "John Doe",
-        }
-        
-        tx, err := DB.Begin()
-        if err != nil {
-            t.Fatal(err)
-        }
-        defer tx.Close()
-        
-        if err := tx.SaveUser(tx, u); err != nil {
-            t.Fatalf("Unable to create a new user account: %s", err)
-        }
-        
-        check, err := tx.GetUser(tx, u.Email)
-        if err != nil {
-            t.Fatalf("Failed to get user by email address: %s", err)
-        }
-        
-        if check.Email != u.Email {
-            t.Errorf("Expected user email to be %s; was %s", u.Email, check.Email)
-        } 
-        
-        if check.Name != u.Name {
-            t.Errorf("Expected user name to be %s; was %s", u.Name, check.Name)
-        } 
-        
-        // Note:  do nothing...when the test case ends, the `defer tx.Close()`
-        // is called, and all the data in this transaction is rolled back out.
-    }
+```go
+package testing
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/sbowman/drawbridge/postgres"
+)
+
+var DB *postgres.DB
+
+// TestMain just opens one database connection pool to speed up testing, so 
+// we're not constantly opening and closing connections.
+func TestMain(m *testing.M) {
+	db, err := postgres.Open(DBTestURI)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Shutdown()
+
+	DB = db
+
+	os.Exit(m.Run())
+}
+
+// TestGetUser tests getting a user account from the database.  The signature for the
+// function is:  `func GetUser(conn hermes.Conn, email string) (User, error)`
+// 
+// Passing a hermes.Conn value to the function means we can pass in either
+// a reference to the database pool and really update the data, or we can
+// pass in the same transaction reference to both the SaveUser and GetUser
+// functions.  If we use a transaction, we can let the transaction roll back 
+// after we test these functions, or at any failure point in the test case,
+// and we know the data is cleaned up. 
+func TestGetUser(t *testing.T) {
+	ctx := context.Background()
+
+	u := User{
+		Email: "jdoe@nowhere.com",
+		Name:  "John Doe",
+	}
+
+	tx, err := DB.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Close(ctx)
+
+	if err := SaveUser(tx, u); err != nil {
+		t.Fatalf("Unable to create a new user account: %s", err)
+	}
+
+	check, err := GetUser(tx, u.Email)
+	if err != nil {
+		t.Fatalf("Failed to get user by email address: %s", err)
+	}
+
+	if check.Email != u.Email {
+		t.Errorf("Expected user email to be %s; was %s", u.Email, check.Email)
+	}
+
+	if check.Name != u.Name {
+		t.Errorf("Expected user name to be %s; was %s", u.Name, check.Name)
+	}
+
+	// Note:  do nothing...when the test case ends, the `defer tx.Close()`
+	// is called, and all the data in this transaction is rolled back out.
+}
+
+```
 
 Using transactions, even if a test case fails a returns prematurely, the database
 transaction is automatically closed, thanks to `defer`. The database is cleaned up without
@@ -180,12 +214,15 @@ Note that because Drawbridge overloads the concept of `db.Close()` and `tx.Close
 pool, which we don't want. So instead, call `postgres.DB.Shutdown()` to clean up your
 connection pool when your app shuts down.
 
-    db, err := postgres.Open(DBTestURI)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
-        os.Exit(1)
-    }
-    defer db.Shutdown()
+```go
+db, err := postgres.Open(DBTestURI)
+if err != nil {
+fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
+os.Exit(1)
+}
+defer db.Shutdown()
+
+```
 
 ## Migrations
 
@@ -363,20 +400,23 @@ The "down" section should contain the code necessary to rollback the "up" change
 
 So our "create_users" migration may look something like this:
 
-    --- !Up
-    create table users (
-        id serial primary key,
-        username varchar(64) not null,
-        email varchar(1024) not null,
-        password varchar(40) not null,
-        enabled bool not null default true
-    );
-    
-    create unique index idx_users_username on users (username);
-    create unique index idx_users_emails on users (email);
-    
-    --- !Down
-    drop table users;
+```sql
+--- !Up
+create table users
+(
+    id       serial primary key,
+    username varchar(64)   not null,
+    email    varchar(1024) not null,
+    password varchar(40)   not null,
+    enabled  bool          not null default true
+);
+
+create unique index idx_users_username on users (username);
+create unique index idx_users_emails on users (email);
+
+--- !Down
+drop table users;
+```
 
 The migrations package simply passes the raw SQL in the appropriate section ("up" or
 "down"), to the database. The SQL calls are wrapped in a single transaction, so that if

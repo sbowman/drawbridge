@@ -7,12 +7,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/sbowman/drawbridge"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/sbowman/drawbridge"
 )
 
 // Direction is the direction to migrate
