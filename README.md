@@ -217,8 +217,8 @@ connection pool when your app shuts down.
 ```go
 db, err := postgres.Open(DBTestURI)
 if err != nil {
-fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
-os.Exit(1)
+    fmt.Fprintf(os.Stderr, "Unable to open a database connection: %s\n", err)
+    os.Exit(1)
 }
 defer db.Shutdown()
 
