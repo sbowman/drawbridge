@@ -345,6 +345,10 @@ func LatestRevision(reader Reader, directory string) int {
 
 // Revision extracts the revision number from a migration filename.
 func Revision(filename string) (int, error) {
+	if filename == "" {
+		return 0, nil
+	}
+
 	segments := strings.SplitN(Filename(filename), "-", 2)
 	if len(segments) == 1 {
 		return 0, fmt.Errorf("invalid migration filename: %s", filename)
