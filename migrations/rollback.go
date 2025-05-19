@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/sbowman/drawbridge"
 	"sort"
 	"strings"
+
+	"github.com/sbowman/drawbridge"
 )
 
 var (
@@ -25,7 +26,7 @@ func UpdateRollback(ctx context.Context, span Span, reader Reader, metadataTable
 		return err
 	}
 
-	if exists {
+	if !exists {
 		return nil
 	}
 
@@ -35,7 +36,6 @@ func UpdateRollback(ctx context.Context, span Span, reader Reader, metadataTable
 	}
 
 	downSQL = strings.TrimSpace(downSQL)
-
 	_, err = span.Exec(ctx, "update "+metadataTable+" set rollback = $1 where migration = $2", downSQL, filename)
 	return err
 }
