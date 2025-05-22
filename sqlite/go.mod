@@ -1,4 +1,4 @@
-module github.com/sbowman/drawbridge/sqlite3
+module github.com/sbowman/drawbridge/sqlite
 
 go 1.24.0
 
