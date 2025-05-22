@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/sbowman/drawbridge"
-	"github.com/sbowman/drawbridge/sqlite3"
+	"github.com/sbowman/drawbridge/sqlite"
 )
 
 // TestDB is the test database connection string.

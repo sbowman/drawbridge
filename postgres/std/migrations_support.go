@@ -50,7 +50,6 @@ func (db *DB) CreateMetadata(ctx context.Context, schema, table string) (string,
 // CreateMetadata creates the migrations package's metadata table in the requested schema
 // and table if it doesn't already exist.  Returns the table name to use for the metadata.
 func (tx *Tx) CreateMetadata(ctx context.Context, schema, table string) (string, error) {
-	fmt.Println("looking for", schema, table)
 	if stmt, err := createSchemaStmt(schema); err != nil {
 		return "", err
 	} else if stmt != "" && missingMetadataSchema(ctx, tx, schema) {
