@@ -1,12 +1,12 @@
-package postgres_test
+package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/sbowman/drawbridge/postgres"
+	"github.com/mattn/go-sqlite3"
+	"github.com/sbowman/drawbridge"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func TestTransaction(t *testing.T) {
 	tx, err := db.Begin(ctx)
 	assert.Nil(err)
 
-	_, err = tx.Exec(ctx, "create table simple(id serial primary key, email varchar(255))")
+	_, err = tx.Exec(ctx, "create table simple(id integer primary key not null, email varchar(255))")
 	assert.Nil(err)
 
 	var id int
@@ -34,21 +34,23 @@ func TestTransaction(t *testing.T) {
 	assert.Equal("jdoe@nowhere.com", email)
 
 	// This should roll everything back
-	postgres.TxClose(ctx, tx)
+	TxClose(t, ctx, tx)
 
 	// Transaction should be dead
 	row = tx.QueryRow(ctx, "select email from simple where id = $1", id)
 	err = row.Scan(&email)
-	assert.ErrorIs(err, pgx.ErrTxClosed)
 	assert.NotNil(err)
+	assert.ErrorIs(err, sql.ErrTxDone)
 
 	// Name should be gone...
 	row = db.QueryRow(ctx, "select email from simple where id = $1", id)
 	err = row.Scan(&email)
+	assert.NotNil(err)
 
-	var pgerr *pgconn.PgError
-	assert.ErrorAs(err, &pgerr)
-	assert.Equal(pgerr.Code, postgres.CodeUndefinedTable)
+	var serr sqlite3.Error
+	assert.ErrorAs(err, &serr)
+	assert.Equal(serr.Code, sqlite3.ErrError)
+	assert.Contains(serr.Error(), "no such table: simple")
 }
 
 // Do subtransactions commit and rollback properly.
@@ -56,12 +58,12 @@ func TestSubTransactionRollback(t *testing.T) {
 	ctx := context.Background()
 	assert := assert.New(t)
 
-	addEmail := func(ctx context.Context, span postgres.Span, email string) (int, error) {
+	addEmail := func(ctx context.Context, span drawbridge.Span, email string) (int, error) {
 		tx, err := span.Begin(ctx)
 		if err != nil {
 			return -1, err
 		}
-		defer postgres.TxClose(ctx, tx)
+		defer TxClose(t, ctx, tx)
 
 		id := -1
 
@@ -70,11 +72,11 @@ func TestSubTransactionRollback(t *testing.T) {
 			return -1, err
 		}
 
-		err = tx.Commit(ctx)
+		err = tx.Commit()
 		return id, err
 	}
 
-	getUser := func(ctx context.Context, span postgres.Span, id int) (string, error) {
+	getUser := func(ctx context.Context, span drawbridge.Span, id int) (string, error) {
 		row := span.QueryRow(ctx, "select email from subtxtest where id = $1", id)
 
 		var email string
@@ -95,7 +97,7 @@ func TestSubTransactionRollback(t *testing.T) {
 	tx, err := db.Begin(ctx)
 	assert.Nil(err)
 
-	_, err = tx.Exec(ctx, "create table subtxtest(id serial primary key, email varchar(255))")
+	_, err = tx.Exec(ctx, "create table subtxtest(id integer primary key not null, email varchar(255))")
 	assert.Nil(err)
 
 	for _, testCase := range testCases {
@@ -108,22 +110,24 @@ func TestSubTransactionRollback(t *testing.T) {
 	}
 
 	// This should roll everything back
-	postgres.TxClose(ctx, tx)
+	TxClose(t, ctx, tx)
 
 	// Transaction should be dead
 	var id int
 	row := tx.QueryRow(ctx, "select id from subtxtest where email = 'abc@nowhere.com'")
 	err = row.Scan(&id)
-	assert.ErrorIs(err, pgx.ErrTxClosed)
 	assert.NotNil(err)
+	assert.ErrorIs(err, sql.ErrTxDone)
 
 	// Name should be gone...
 	row = db.QueryRow(ctx, "select id from subtxtest where email = 'abc@nowhere.com'")
 	err = row.Scan(&id)
+	assert.NotNil(err)
 
-	var pgerr *pgconn.PgError
-	assert.ErrorAs(err, &pgerr)
-	assert.Equal(pgerr.Code, postgres.CodeUndefinedTable)
+	var serr sqlite3.Error
+	assert.ErrorAs(err, &serr)
+	assert.Equal(serr.Code, sqlite3.ErrError)
+	assert.Contains(serr.Error(), "no such table: subtxtest")
 }
 
 // Do subtransactions commit and rollback properly.
@@ -131,12 +135,12 @@ func TestSubTransactionCommit(t *testing.T) {
 	ctx := context.Background()
 	assert := assert.New(t)
 
-	addEmail := func(ctx context.Context, span postgres.Span, email string) (int, error) {
+	addEmail := func(ctx context.Context, span drawbridge.Span, email string) (int, error) {
 		tx, err := span.Begin(ctx)
 		if err != nil {
 			return -1, err
 		}
-		defer postgres.TxClose(ctx, tx)
+		defer TxClose(t, ctx, tx)
 
 		id := -1
 
@@ -145,11 +149,11 @@ func TestSubTransactionCommit(t *testing.T) {
 			return -1, err
 		}
 
-		err = tx.Commit(ctx)
+		err = tx.Commit()
 		return id, err
 	}
 
-	getUser := func(ctx context.Context, span postgres.Span, id int) (string, error) {
+	getUser := func(ctx context.Context, span drawbridge.Span, id int) (string, error) {
 		row := span.QueryRow(ctx, "select email from subtxcommit where id = $1", id)
 
 		var email string
@@ -169,9 +173,9 @@ func TestSubTransactionCommit(t *testing.T) {
 
 	tx, err := db.Begin(ctx)
 	assert.Nil(err)
-	defer postgres.TxClose(ctx, tx)
+	defer TxClose(t, ctx, tx)
 
-	_, err = tx.Exec(ctx, "create table subtxcommit(id serial primary key, email varchar(255))")
+	_, err = tx.Exec(ctx, "create table subtxcommit(id integer primary key not null, email varchar(255))")
 	assert.Nil(err)
 
 	for _, testCase := range testCases {
@@ -186,15 +190,15 @@ func TestSubTransactionCommit(t *testing.T) {
 	}
 
 	// This should commit everything
-	err = tx.Commit(ctx)
+	err = tx.Commit()
 	assert.Nil(err)
 
 	// Transaction should be dead
 	var id int
 	row := tx.QueryRow(ctx, "select id from subtxcommit where email = 'abc@nowhere.com'")
 	err = row.Scan(&id)
-	assert.ErrorIs(err, pgx.ErrTxClosed)
 	assert.NotNil(err)
+	assert.ErrorIs(err, sql.ErrTxDone)
 
 	for _, testCase := range testCases {
 		var id int

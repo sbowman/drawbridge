@@ -3,9 +3,10 @@ package postgres_test
 import (
 	"context"
 	"fmt"
-	"github.com/sbowman/drawbridge/postgres"
 	"os"
 	"testing"
+
+	"github.com/sbowman/drawbridge/postgres"
 )
 
 // TestDB is the test database connection string.

@@ -5,14 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
+	"regexp"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"reflect"
-	"regexp"
-	"strings"
+
+	_ "github.com/jackc/pgx/v5"
 )
 
 // FromPool creates a postgres.Span-compatible object.  Note this approach does not

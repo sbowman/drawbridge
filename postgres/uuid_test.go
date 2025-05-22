@@ -2,9 +2,10 @@ package postgres_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestUUIDType(t *testing.T) {
